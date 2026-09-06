@@ -24,6 +24,14 @@ Design notes, all deliberate:
   strings rather than dropped, so a ``like`` pattern can still match content
   nested inside them. Dropping an argument silently would let a policy keyed
   on it fail open.
+
+* **No receipt, no action (opt-in).** With ``require_receipt=True`` and the
+  gateway's public decision key, an enforcing guard runs a tool only when the
+  gateway's allow came with a signed receipt that verifies under that key and
+  is for exactly this call (:mod:`.receipt`). A missing or unacceptable receipt
+  blocks the call even though the gate said allow — it is not a transport
+  error, so ``on_error="allow"`` does not apply: the effector holds proof, or
+  it does not act.
 """
 
 from __future__ import annotations
@@ -33,6 +41,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Optional
 
 from .client import I64_MAX, I64_MIN, GateDecision, OnyxGate, OnyxGateError
+from .receipt import ReceiptError, request_sha256_of_payload, require_receipt
 
 MODE_ENFORCE = "enforce"
 MODE_OBSERVE = "observe"
@@ -104,6 +113,9 @@ class GateResult:
     advisory_note: Optional[str] = None
     decision: Optional[GateDecision] = None
     error: Optional[str] = None
+    #: The gateway's signed receipt for this decision, when one was issued —
+    #: keep it: it binds this call to the gateway's audit trail later.
+    receipt: Optional[dict] = None
 
 
 class ToolGuard:
@@ -131,6 +143,19 @@ class ToolGuard:
         resource_type: entity type for the synthesized per-call resource uid
             (default ``Tool`` — policies match ``resource == Tool::"name"``
             or, more commonly, key on ``action == Action::"name"``).
+        receipt: ask the gateway to sign each decision (``?receipt=true``) and
+            expose it as :attr:`GateResult.receipt` — without enforcing it.
+        require_receipt: the effector-side rule — an enforcing guard runs a tool
+            only when the allow came with a receipt that verifies under
+            ``receipt_public_key`` and is for exactly this call; in observe
+            mode a missing/unacceptable receipt is an advisory note. Implies
+            ``receipt``. Not subject to ``on_error`` (see the module notes).
+        receipt_public_key: the gateway's public decision key, hex — the
+            ``receipt_key.public_key`` value on its ``GET /ready``, or the
+            ``.pub`` of its ``--receipt-key-file`` pair (see
+            :func:`~.receipt.read_public_key`). Required with ``require_receipt``.
+        receipt_max_age_s: refuse receipts older than this many seconds
+            (hygiene, not replay protection — ordering comes from the trail).
     """
 
     def __init__(
@@ -143,11 +168,21 @@ class ToolGuard:
         certify: bool = False,
         resource_type: str = "Tool",
         check_version: bool = True,
+        receipt: bool = False,
+        require_receipt: bool = False,
+        receipt_public_key: Optional[str] = None,
+        receipt_max_age_s: Optional[float] = None,
     ) -> None:
         if mode not in (MODE_ENFORCE, MODE_OBSERVE):
             raise ValueError(f"mode must be 'enforce' or 'observe', got {mode!r}")
         if on_error not in ("deny", "allow"):
             raise ValueError(f"on_error must be 'deny' or 'allow', got {on_error!r}")
+        if require_receipt and not receipt_public_key:
+            raise ValueError("require_receipt=True needs receipt_public_key (the gateway's public decision key)")
+        self.receipt = receipt or require_receipt
+        self.require_receipt = require_receipt
+        self.receipt_public_key = receipt_public_key
+        self.receipt_max_age_s = receipt_max_age_s
         self.gate = gate if gate is not None else OnyxGate()
         self.agent = agent
         self.mode = mode
@@ -183,6 +218,25 @@ class ToolGuard:
             "do not work around the gate."
         )
 
+    def _receipt_deny_message(self, descriptor: str, error: str) -> str:
+        return (
+            "[Onyx Gate] DENIED (no valid receipt) — the gateway allowed this call but "
+            "did not prove it: this guard requires a signed decision receipt before a "
+            "tool runs, and none could be accepted, so the call did NOT execute.\n"
+            f"  call:    {descriptor}\n"
+            f"  receipt: {error}\n"
+            "This is an infrastructure condition (a gateway without a receipt key, a "
+            "rotated key, or a receipt for another request), not a policy verdict. "
+            "Report it; do not work around the gate."
+        )
+
+    def _receipt_note(self, descriptor: str, error: str) -> str:
+        return (
+            f"[Onyx Gate advisory] The call {descriptor} executed, but the gateway's "
+            "allow came without an acceptable signed receipt — in enforcing mode it "
+            f"would have been blocked.\n  receipt: {error}"
+        )
+
     def _observe_note(self, descriptor: str, reason: Optional[str]) -> str:
         why = reason or "denied by policy (no further detail available)"
         return (
@@ -205,6 +259,7 @@ class ToolGuard:
                 resource_attrs=scalarize_args(args),
                 context=self.context,
                 certify=self.certify,
+                receipt=self.receipt,
             )
         except OnyxGateError as e:
             if self.mode == MODE_OBSERVE:
@@ -233,16 +288,44 @@ class ToolGuard:
             )
 
         if decision.allowed:
-            return GateResult(allowed=True, decision=decision)
+            if self.require_receipt:
+                # The effector-side rule: proof of THIS allow, for THIS call, under
+                # the key we trust — or the tool does not run. Never fail-open here.
+                try:
+                    require_receipt(
+                        decision.receipt,
+                        self.receipt_public_key or "",
+                        decision="allow",
+                        request_sha256=request_sha256_of_payload(decision.request),
+                        max_age_s=self.receipt_max_age_s,
+                    )
+                except ReceiptError as e:
+                    if self.mode == MODE_OBSERVE:
+                        return GateResult(
+                            allowed=True,
+                            advisory_note=self._receipt_note(descriptor, str(e)),
+                            decision=decision,
+                            receipt=decision.receipt,
+                        )
+                    return GateResult(
+                        allowed=False,
+                        blocked_message=self._receipt_deny_message(descriptor, str(e)),
+                        decision=decision,
+                        error=f"receipt: {e}",
+                        receipt=decision.receipt,
+                    )
+            return GateResult(allowed=True, decision=decision, receipt=decision.receipt)
 
         if self.mode == MODE_OBSERVE:
             return GateResult(
                 allowed=True,
                 advisory_note=self._observe_note(descriptor, decision.explanation),
                 decision=decision,
+                receipt=decision.receipt,
             )
         return GateResult(
             allowed=False,
             blocked_message=self._deny_message(descriptor, decision.explanation),
             decision=decision,
+            receipt=decision.receipt,
         )

@@ -1,0 +1,16 @@
+{
+ "decision": "deny",
+ "explanation": "Denied \u2014 no permit policy matches (Cedar's default deny).",
+ "policy_version": "b84508548077d181e047c3e5b1511e4a70c30b495a5202ec9b503ee23b292503",
+ "receipt": {
+  "decision": "deny",
+  "engine": "eg_gateway 0.3.1 (b20e0e3e72d1-dirty)",
+  "explanation_sha256": "495bd8670d08464dc260265fad886fd73cb84ac6338d5bb74746e84a336b6285",
+  "kid": "f99d4a66d0a5bda8",
+  "policy_version": "b84508548077d181e047c3e5b1511e4a70c30b495a5202ec9b503ee23b292503",
+  "request_sha256": "b650c81b047fa58f39c473e0677d16806836f799259b8cb721700a82a5ea6ec3",
+  "sig": "df73b7f64a1759895b82b25a5758c1f542d98cc6264c940f024404ee7f2575af170c2556227c5fe087816ab4bc4788abb42dedd100d1c034e6972abf9638020b",
+  "ts": "2026-09-06T18:25:51Z",
+  "v": "onyx-receipt-v1"
+ }
+}

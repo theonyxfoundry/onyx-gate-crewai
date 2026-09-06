@@ -1,0 +1,14 @@
+{
+ "decision": "allow",
+ "policy_version": "b84508548077d181e047c3e5b1511e4a70c30b495a5202ec9b503ee23b292503",
+ "receipt": {
+  "decision": "allow",
+  "engine": "eg_gateway 0.3.1 (b20e0e3e72d1-dirty)",
+  "kid": "f99d4a66d0a5bda8",
+  "policy_version": "b84508548077d181e047c3e5b1511e4a70c30b495a5202ec9b503ee23b292503",
+  "request_sha256": "b2b6d3f72401b6d748b08f1249e87355810b9db25b38b6e7df44e794981afd6b",
+  "sig": "3298406d0b2e1df48fa01ab2783095db1bcf11173b7da1a4fb132fa5d50d4b0d355593f9ef26043d1781fa853505c4a1fdedd4cb04f9a52c61c9493e5c721c09",
+  "ts": "2026-09-06T18:25:51Z",
+  "v": "onyx-receipt-v1"
+ }
+}

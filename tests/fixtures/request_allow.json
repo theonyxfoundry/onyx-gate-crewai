@@ -1,0 +1,1 @@
+{"agent":"ap-clerk","tool":"pay_invoice","resource":"Tool::\"pay_invoice\"","resource_attrs":{"vendor":"globex","amount":4800,"rush":true},"context":{"env":"prod"}}
