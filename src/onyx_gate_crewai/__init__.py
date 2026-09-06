@@ -5,6 +5,8 @@ Core (no dependencies beyond the standard library):
 * :class:`OnyxGate` — HTTP client for a running Onyx gateway.
 * :class:`ToolGuard` — framework-agnostic per-agent guard (enforce/observe,
   fail-closed error handling, deny messages the agent can act on).
+* :mod:`onyx_gate_crewai.receipt` — signed per-decision receipts: verify one
+  under the gateway's public key, and :func:`require_receipt` before acting.
 
 CrewAI adapter (requires ``crewai``; imported lazily):
 
@@ -14,19 +16,37 @@ CrewAI adapter (requires ``crewai``; imported lazily):
 
 from .client import GateDecision, OnyxGate, OnyxGateError
 from .guard import GateResult, ToolGuard
+from .receipt import (
+    ReceiptError,
+    ReceiptInvalid,
+    ReceiptMismatch,
+    ReceiptMissing,
+    read_public_key,
+    request_sha256,
+    require_receipt,
+    verify_receipt,
+)
 
 __all__ = [
     "GateDecision",
     "GateResult",
     "OnyxGate",
     "OnyxGateError",
+    "ReceiptError",
+    "ReceiptInvalid",
+    "ReceiptMismatch",
+    "ReceiptMissing",
     "ToolGuard",
+    "read_public_key",
+    "request_sha256",
+    "require_receipt",
+    "verify_receipt",
     "guard_tool",
     "guard_tools",
     "OnyxGuardedTool",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 
 def __getattr__(name: str):

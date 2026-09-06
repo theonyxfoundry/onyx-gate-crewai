@@ -170,6 +170,43 @@ certified decisions cost ~2–3 ms instead of ~0.5–1 ms (local loopback, singl
 client, Apple-silicon laptop). That is what "verifiable" means here: the audit
 answer is not "the logs say so" but "re-derive it yourself, offline."
 
+## Decision receipts — no receipt, no action
+
+A gateway started with a decision key (`eg_gateway --receipt-key-file`) signs
+every decision on request: a small **receipt** saying which request (by
+canonical hash) was decided, which way, under which policy version, by which
+engine, and when — verifiable by anyone holding the gateway's public key, which
+it discloses on `GET /ready` as `receipt_key`. The gateway's hash-chained trail
+commits each receipt by hash, so a receipt in hand can later be bound to the
+exact record that recorded the decision (`eg_verify --audit-log … --receipt …`).
+
+This package can make that binding a **precondition of execution** — the
+effector-side rule:
+
+```python
+from onyx_gate_crewai import OnyxGate, ToolGuard, read_public_key
+
+guard = ToolGuard(
+    OnyxGate("http://127.0.0.1:8080"),
+    agent="ap-clerk",
+    require_receipt=True,
+    receipt_public_key=read_public_key("gw.pub"),   # the gateway's .pub
+)
+```
+
+With `require_receipt=True` a tool runs only when the gateway's allow came with
+a receipt that (1) verifies under that key, (2) says `allow`, and (3) is for
+exactly this call — the request hash is recomputed here from the body the
+client sent, so a receipt for a different call, an edited receipt, a receipt
+under a rotated key, or no receipt at all blocks the call even though the gate
+said allow. That is deliberately *not* subject to `on_error="allow"`: a missing
+receipt is not a transport hiccup, it is the absence of proof. `receipt=True`
+alone asks for receipts and exposes them (`GateResult.receipt`) without
+enforcing; keep them — each one names the trail record it can be checked
+against. Verification is standard-library Python (the RFC 8032 algorithm,
+about 3 ms per receipt) and is pinned in the tests against receipts a real
+gateway signed, byte for byte with the engine's own canonical hashing.
+
 ## Try it
 
 ```bash
@@ -245,6 +282,10 @@ when a guard is built it reads the gateway's version once and emits a
 upgraded together. `ToolGuard(..., check_version=False)` skips the startup
 request; a gateway older than 0.2.0 reports no version and is treated as
 unknown (silent). `OnyxGate.server_info()` returns the block for your own logs.
+Receipts need a gateway with the receipts lane (after Onyx 0.3.1) started with
+a decision key — `receipt_key` on `GET /ready` shows whether it is on; a gateway
+without one answers `?receipt=true` with a plain decision, which
+`require_receipt=True` then refuses.
 
 ## License
 

@@ -1,0 +1,1 @@
+{"agent":"ap-clerk","tool":"pay_invoice","resource":"Tool::\"pay_invoice\"","resource_attrs":{"vendor":"acme","amount":4800}}

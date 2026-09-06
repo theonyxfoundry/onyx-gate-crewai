@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "onyx-gate-crewai"
-version = "0.2.0"
+version = "0.3.0"
 description = "Onyx Gate for CrewAI — a verifiable authorization gate for crew tool calls: policy-decided allow/deny before a tool executes, with an audit trail you can re-check."
 readme = "README.md"
 license = { text = "Apache-2.0" }
